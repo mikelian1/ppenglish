@@ -1,4 +1,5 @@
 import {
+  VOCABULARY_ARTICLE_WORD_INDEX,
   VOCABULARY_STORE,
   openDatabase,
   requestToPromise,
@@ -27,26 +28,45 @@ export async function listVocabularyRecords() {
 
 export async function listVocabularyWords() {
   const words = await listVocabularyRecords();
-  return words.map((item) => item.word);
+  const seenWords = new Set();
+  return words
+    .map((item) => item.word)
+    .filter((word) => {
+      if (seenWords.has(word)) return false;
+      seenWords.add(word);
+      return true;
+    });
 }
 
-export async function addVocabularyWord(rawWord) {
-  const word = normalizeVocabularyWord(rawWord);
-  if (!word) {
+export async function addVocabularyWord(rawWord, options = {}) {
+  const vocabularyRecord = createVocabularyRecord(rawWord, options);
+  if (!vocabularyRecord) {
     throw new Error("请输入英文单词。");
   }
 
   const db = await openDatabase();
   const transaction = db.transaction([VOCABULARY_STORE], "readwrite");
   const store = transaction.objectStore(VOCABULARY_STORE);
-  const existingWord = await requestToPromise(store.get(word));
+  const scopeWordIndex = store.index(VOCABULARY_ARTICLE_WORD_INDEX);
+  const existingRecord = await requestToPromise(
+    scopeWordIndex.get([
+      vocabularyRecord.articleId,
+      vocabularyRecord.normalizedWord,
+    ])
+  );
 
-  if (!existingWord) {
-    await requestToPromise(store.put(createVocabularyRecord(word)));
+  if (!existingRecord) {
+    await requestToPromise(store.put(vocabularyRecord));
   }
 
   db.close();
-  return { word, added: !existingWord };
+  return {
+    word: vocabularyRecord.word,
+    added: !existingRecord,
+    record: normalizeVocabularyRecordForExport(
+      existingRecord || vocabularyRecord
+    ),
+  };
 }
 
 export async function deleteVocabularyWord(rawWord) {
@@ -58,7 +78,11 @@ export async function deleteVocabularyWord(rawWord) {
   const db = await openDatabase();
   const transaction = db.transaction([VOCABULARY_STORE], "readwrite");
   const store = transaction.objectStore(VOCABULARY_STORE);
-  await requestToPromise(store.delete(word));
+  const scopeWordIndex = store.index(VOCABULARY_ARTICLE_WORD_INDEX);
+  const existingRecord = await requestToPromise(scopeWordIndex.get(["", word]));
+  if (existingRecord) {
+    await requestToPromise(store.delete(existingRecord.id));
+  }
   db.close();
 }
 
@@ -70,6 +94,7 @@ export async function importVocabularyWords(words) {
   const db = await openDatabase();
   const transaction = db.transaction([VOCABULARY_STORE], "readwrite");
   const store = transaction.objectStore(VOCABULARY_STORE);
+  const scopeWordIndex = store.index(VOCABULARY_ARTICLE_WORD_INDEX);
   const transactionDone = transactionToPromise(transaction);
   let imported = 0;
   let skipped = 0;
@@ -96,8 +121,13 @@ export async function importVocabularyWords(words) {
         continue;
       }
 
-      const existingWord = await requestToPromise(store.get(vocabularyRecord.word));
-      if (existingWord) {
+      const existingRecord = await requestToPromise(
+        scopeWordIndex.get([
+          vocabularyRecord.articleId,
+          vocabularyRecord.normalizedWord,
+        ])
+      );
+      if (existingRecord) {
         skipped += 1;
       } else {
         await requestToPromise(store.put(vocabularyRecord));

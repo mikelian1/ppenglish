@@ -1,5 +1,6 @@
 import {
   ARTICLE_STORE,
+  VOCABULARY_ARTICLE_WORD_INDEX,
   VOCABULARY_STORE,
   openDatabase,
   requestToPromise,
@@ -78,6 +79,9 @@ export async function importArticles(payload) {
   );
   const store = transaction.objectStore(ARTICLE_STORE);
   const vocabularyStore = transaction.objectStore(VOCABULARY_STORE);
+  const vocabularyScopeWordIndex = vocabularyStore.index(
+    VOCABULARY_ARTICLE_WORD_INDEX
+  );
   const transactionDone = transactionToPromise(transaction);
   let imported = 0;
   let skipped = 0;
@@ -104,10 +108,13 @@ export async function importArticles(payload) {
         continue;
       }
 
-      const existingWord = await requestToPromise(
-        vocabularyStore.get(vocabularyRecord.word)
+      const existingRecord = await requestToPromise(
+        vocabularyScopeWordIndex.get([
+          vocabularyRecord.articleId,
+          vocabularyRecord.normalizedWord,
+        ])
       );
-      if (existingWord) {
+      if (existingRecord) {
         vocabularySkipped += 1;
       } else {
         await requestToPromise(vocabularyStore.put(vocabularyRecord));

@@ -337,18 +337,36 @@ export default {
         this.vocabularyPanel = false;
       }
     },
-    async handleKeydown(event) {
-      const target = event.target;
-      const tag = target && target.tagName;
-      const isEditable =
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        tag === "SELECT" ||
-        (target && target.isContentEditable);
+    isEditableTarget(target) {
+      if (!target) return false;
 
-      if (isEditable || event.ctrlKey || event.metaKey || event.altKey) return;
+      const tagName = target.tagName ? target.tagName.toLowerCase() : "";
+
+      return (
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select" ||
+        target.isContentEditable ||
+        (target.closest && target.closest('[contenteditable="true"]'))
+      );
+    },
+    async handleKeydown(event) {
+      if (
+        this.isEditableTarget(event.target) ||
+        event.repeat ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      )
+        return;
 
       const key = event.key && event.key.toLowerCase();
+      if (key === "a") {
+        event.preventDefault();
+        this.cycleReadingMode();
+        return;
+      }
+
       if (key !== "w") return;
 
       event.preventDefault();
@@ -415,6 +433,21 @@ export default {
           this.styles
         )
       );
+    },
+    cycleReadingMode() {
+      const readingModeOrder = [
+        READING_MODES.BILINGUAL_DOUBLE,
+        READING_MODES.BILINGUAL_SINGLE,
+        READING_MODES.ENGLISH_ONLY,
+      ];
+      const currentReadingMode = this.styles && this.styles.readingMode;
+      const currentIndex = readingModeOrder.indexOf(currentReadingMode);
+      const nextReadingMode =
+        currentIndex === -1
+          ? READING_MODES.BILINGUAL_DOUBLE
+          : readingModeOrder[(currentIndex + 1) % readingModeOrder.length];
+
+      this.setReadingMode(nextReadingMode);
     },
     updateCollumn(index) {
       this.setReadingMode(

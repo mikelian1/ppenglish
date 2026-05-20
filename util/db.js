@@ -1,7 +1,61 @@
+import { normalizeVocabularyRecordForImport } from "./vocabularyModel";
+
 export const DB_NAME = "ppdb";
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 export const ARTICLE_STORE = "articles";
 export const VOCABULARY_STORE = "vocabulary";
+export const VOCABULARY_NORMALIZED_WORD_INDEX = "normalizedWord";
+export const VOCABULARY_ARTICLE_ID_INDEX = "articleId";
+export const VOCABULARY_ARTICLE_WORD_INDEX = "articleIdNormalizedWord";
+
+function ensureVocabularyIndexes(store) {
+  if (!store.indexNames.contains(VOCABULARY_NORMALIZED_WORD_INDEX)) {
+    store.createIndex(VOCABULARY_NORMALIZED_WORD_INDEX, "normalizedWord");
+  }
+  if (!store.indexNames.contains(VOCABULARY_ARTICLE_ID_INDEX)) {
+    store.createIndex(VOCABULARY_ARTICLE_ID_INDEX, "articleId");
+  }
+  if (!store.indexNames.contains(VOCABULARY_ARTICLE_WORD_INDEX)) {
+    store.createIndex(
+      VOCABULARY_ARTICLE_WORD_INDEX,
+      ["articleId", "normalizedWord"],
+      { unique: true }
+    );
+  }
+}
+
+function createVocabularyStore(db) {
+  const store = db.createObjectStore(VOCABULARY_STORE, { keyPath: "id" });
+  ensureVocabularyIndexes(store);
+  return store;
+}
+
+function migrateVocabularyStore(db, transaction) {
+  const oldStore = transaction.objectStore(VOCABULARY_STORE);
+  const getAllRequest = oldStore.getAll();
+
+  // Keep the migration inside the versionchange transaction; do not use await here.
+  getAllRequest.onsuccess = function (event) {
+    const seenScopeWords = new Set();
+    const vocabularyRecords = (event.target.result || [])
+      .map((record) =>
+        normalizeVocabularyRecordForImport(record, new Date().toISOString())
+      )
+      .filter(Boolean)
+      .filter((record) => {
+        const scopeWordKey = `${record.articleId}\u0000${record.normalizedWord}`;
+        if (seenScopeWords.has(scopeWordKey)) return false;
+        seenScopeWords.add(scopeWordKey);
+        return true;
+      });
+
+    db.deleteObjectStore(VOCABULARY_STORE);
+    const newStore = createVocabularyStore(db);
+    vocabularyRecords.forEach((record) => {
+      newStore.put(record);
+    });
+  };
+}
 
 export function openDatabase() {
   return new Promise((resolve, reject) => {
@@ -13,7 +67,16 @@ export function openDatabase() {
         db.createObjectStore(ARTICLE_STORE, { keyPath: "id" });
       }
       if (!db.objectStoreNames.contains(VOCABULARY_STORE)) {
-        db.createObjectStore(VOCABULARY_STORE, { keyPath: "word" });
+        createVocabularyStore(db);
+      } else {
+        const vocabularyStore = event.target.transaction.objectStore(
+          VOCABULARY_STORE
+        );
+        if (vocabularyStore.keyPath === "id") {
+          ensureVocabularyIndexes(vocabularyStore);
+        } else {
+          migrateVocabularyStore(db, event.target.transaction);
+        }
       }
     };
 
