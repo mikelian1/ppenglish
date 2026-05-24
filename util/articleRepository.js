@@ -1,6 +1,10 @@
 import { segmentText } from "./textSegmenter";
 import { ARTICLE_STORE, openDatabase, requestToPromise } from "./db";
-import { ARTICLE_SCHEMA_VERSION, validateArticle } from "./articleSchema";
+import {
+  ARTICLE_SCHEMA_VERSION,
+  normalizeArticleForStorage,
+  validateArticle,
+} from "./articleSchema";
 
 function createId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -23,13 +27,14 @@ export function createArticle({ title, sourceText }) {
 }
 
 export async function saveArticle(article) {
-  validateArticle(article);
+  const normalizedArticle = normalizeArticleForStorage(article);
+  validateArticle(normalizedArticle);
   const db = await openDatabase();
   const transaction = db.transaction([ARTICLE_STORE], "readwrite");
   const store = transaction.objectStore(ARTICLE_STORE);
-  await requestToPromise(store.put(article));
+  await requestToPromise(store.put(normalizedArticle));
   db.close();
-  return article;
+  return normalizedArticle;
 }
 
 export async function getArticle(id) {
@@ -38,7 +43,7 @@ export async function getArticle(id) {
   const store = transaction.objectStore(ARTICLE_STORE);
   const article = await requestToPromise(store.get(id));
   db.close();
-  return article || null;
+  return article ? normalizeArticleForStorage(article) : null;
 }
 
 export async function listArticles() {
@@ -47,7 +52,9 @@ export async function listArticles() {
   const store = transaction.objectStore(ARTICLE_STORE);
   const articles = await requestToPromise(store.getAll());
   db.close();
-  return articles.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return articles
+    .map(normalizeArticleForStorage)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 export async function deleteArticle(id) {

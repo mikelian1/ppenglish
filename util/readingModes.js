@@ -1,3 +1,8 @@
+import {
+  DEFAULT_HIGHLIGHT_COLOR,
+  normalizeHighlightColor,
+} from "./highlightUtils";
+
 export const READING_MODES = {
   BILINGUAL_DOUBLE: "bilingual-double",
   BILINGUAL_SINGLE: "bilingual-single",
@@ -40,6 +45,10 @@ export function normalizeReadingStyles(input = {}, defaults = {}) {
 
   return {
     ...merged,
+    highlightColor: normalizeHighlightColor(
+      merged.highlightColor,
+      DEFAULT_HIGHLIGHT_COLOR
+    ),
     readingMode,
     gridTemplateColumns: getGridTemplateColumnsByReadingMode(readingMode),
   };

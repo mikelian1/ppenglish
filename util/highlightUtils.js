@@ -1,5 +1,36 @@
 export const DEFAULT_HIGHLIGHT_COLOR = "rgba(255, 232, 120, 0.72)";
 export const LOOKUP_HIGHLIGHT_COLOR = "rgba(255, 128, 191, 0.45)";
+export const GREEN_HIGHLIGHT_COLOR = "rgba(168, 244, 207, 0.72)";
+
+export const HIGHLIGHT_COLOR_OPTIONS = [
+  {
+    id: "pink",
+    label: "Pink",
+    color: LOOKUP_HIGHLIGHT_COLOR,
+  },
+  {
+    id: "yellow",
+    label: "Yellow",
+    color: DEFAULT_HIGHLIGHT_COLOR,
+  },
+  {
+    id: "green",
+    label: "Green",
+    color: GREEN_HIGHLIGHT_COLOR,
+  },
+];
+
+export function normalizeHighlightColor(
+  color,
+  fallbackColor = DEFAULT_HIGHLIGHT_COLOR
+) {
+  const value = String(color || "").trim();
+  const fallback = String(fallbackColor || "").trim() || DEFAULT_HIGHLIGHT_COLOR;
+
+  return HIGHLIGHT_COLOR_OPTIONS.some((option) => option.color === value)
+    ? value
+    : fallback;
+}
 
 export function createHighlightId() {
   return `highlight-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -14,12 +45,19 @@ export function normalizeHighlights(
 
   return (Array.isArray(highlights) ? highlights : [])
     .filter((highlight) => highlight && typeof highlight === "object")
-    .map((highlight) => ({
-      id: highlight.id || createHighlightId(),
-      start: Math.max(0, Math.min(length, Number(highlight.start))),
-      end: Math.max(0, Math.min(length, Number(highlight.end))),
-      color: highlight.color || defaultColor,
-    }))
+    .map((highlight) => {
+      const start = Number(highlight.start);
+      const end = Number(highlight.end);
+      return {
+        id: highlight.id || createHighlightId(),
+        start: Number.isFinite(start) ? Math.max(0, Math.min(length, start)) : 0,
+        end: Number.isFinite(end) ? Math.max(0, Math.min(length, end)) : 0,
+        color:
+          typeof highlight.color === "string" && highlight.color.trim()
+            ? highlight.color
+            : defaultColor,
+      };
+    })
     .filter((highlight) => highlight.start < highlight.end)
     .sort((a, b) => a.start - b.start || a.end - b.end)
     .reduce((merged, highlight) => {

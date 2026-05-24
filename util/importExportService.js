@@ -6,7 +6,12 @@ import {
   requestToPromise,
   transactionToPromise,
 } from "./db";
-import { ARTICLE_SCHEMA_VERSION, validateArticle } from "./articleSchema";
+import {
+  ARTICLE_SCHEMA_VERSION,
+  isSupportedArticleSchemaVersion,
+  normalizeArticleForStorage,
+  validateArticle,
+} from "./articleSchema";
 import { listArticles } from "./articleRepository";
 import { listVocabularyRecords } from "./vocabularyRepository";
 import { normalizeVocabularyRecordForImport } from "./vocabularyModel";
@@ -15,23 +20,23 @@ const EXPORT_APP_NAME = "ppenglish";
 
 function validateImportPayload(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new Error("导入文件格式不正确");
+    throw new Error("Import file format is invalid");
   }
-  if (payload.schemaVersion !== ARTICLE_SCHEMA_VERSION) {
-    throw new Error("导入文件 schemaVersion 不兼容");
+  if (!isSupportedArticleSchemaVersion(payload.schemaVersion)) {
+    throw new Error("Import file schemaVersion is incompatible");
   }
   if (!Array.isArray(payload.articles)) {
-    throw new Error("导入文件缺少 articles 数组");
+    throw new Error("Import file is missing articles array");
   }
   if (payload.vocabulary !== undefined && !Array.isArray(payload.vocabulary)) {
-    throw new Error("导入文件 vocabulary 格式不正确");
+    throw new Error("Import file vocabulary format is invalid");
   }
 
   payload.articles.forEach((article, index) => {
     try {
-      validateArticle(article);
+      validateArticle(normalizeArticleForStorage(article));
     } catch (error) {
-      throw new Error(`第 ${index + 1} 篇文章格式错误：${error.message}`);
+      throw new Error(`Article ${index + 1} format error: ${error.message}`);
     }
   });
 
@@ -44,17 +49,13 @@ function validateImportPayload(payload) {
       typeof item.word === "string";
 
     if (!isLegacyWord && !isVocabularyRecord) {
-      throw new Error(`第 ${index + 1} 个生词格式不正确`);
+      throw new Error(`Vocabulary item ${index + 1} format is invalid`);
     }
   });
 }
 
 function cloneArticleForImport(article) {
-  return {
-    ...article,
-    createdAt: article.createdAt,
-    updatedAt: article.updatedAt,
-  };
+  return normalizeArticleForStorage(article);
 }
 
 export async function exportArticles() {

@@ -36,6 +36,7 @@
       :grid-template-columns="gridTemplateColumns"
       :reading-mode="readingMode"
       :mode="interactionMode"
+      :highlight-color="highlightColor"
       @update:mode="$emit('update:interactionMode', $event)"
       @update-highlights="updateSegmentHighlights"
       @update-title="updateArticleTitle"
@@ -50,6 +51,7 @@ import {
   getArticle,
   saveArticle,
 } from "../../util/articleStorage";
+import { DEFAULT_HIGHLIGHT_COLOR } from "../../util/highlightUtils";
 
 export default {
   props: {
@@ -64,6 +66,10 @@ export default {
     interactionMode: {
       type: String,
       default: "lookup",
+    },
+    highlightColor: {
+      type: String,
+      default: DEFAULT_HIGHLIGHT_COLOR,
     },
   },
   data() {

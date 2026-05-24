@@ -15,6 +15,7 @@
         :gridTemplateColumns="styles.gridTemplateColumns"
         :readingMode="styles.readingMode"
         :interactionMode.sync="readerInteractionMode"
+        :highlightColor="styles.highlightColor"
       ></nuxt-child>
     </div>
   </div>

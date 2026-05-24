@@ -1,6 +1,45 @@
 <template>
-  <div>
+  <div
+    class="toolbar-shell"
+    :style="{ '--toolbar-bg': styles && styles.color ? styles.color : '#222' }"
+  >
     <div class="toolbar">
+      <div
+        v-if="isHighlightMode && !vocabularyOnly"
+        class="highlight-color-control"
+      >
+        <button
+          type="button"
+          class="highlight-color-button"
+          :aria-expanded="String(highlightColorPanel)"
+          aria-label="Highlight color, press C to switch"
+          title="Highlight color (C)"
+          @click.stop="toggleHighlightColorPanel"
+        >
+          <span
+            class="highlight-color-dot"
+            :style="getHighlightPreviewStyle(currentHighlightColor)"
+          ></span>
+        </button>
+
+        <div
+          v-if="highlightColorPanel"
+          class="highlight-color-panel"
+          @click.stop
+        >
+          <button
+            v-for="option in highlightColorOptions"
+            :key="option.id"
+            type="button"
+            class="highlight-color-swatch"
+            :class="{ active: option.color === currentHighlightColor }"
+            :style="getHighlightPreviewStyle(option.color)"
+            :aria-label="option.label"
+            :title="option.label"
+            @click.stop="setHighlightColor(option.color)"
+          ></button>
+        </div>
+      </div>
       <button
         v-if="!vocabularyOnly"
         type="button"
@@ -197,6 +236,10 @@ import {
   listArticles,
   listVocabularyRecords,
 } from "~/util/articleStorage";
+import {
+  HIGHLIGHT_COLOR_OPTIONS,
+  normalizeHighlightColor,
+} from "~/util/highlightUtils";
 
 export default {
   props: {
@@ -216,6 +259,7 @@ export default {
     return {
       toolDiv: false,
       vocabularyPanel: false,
+      highlightColorPanel: false,
       vocabularyRecords: [],
       articleTitlesById: {},
       vocabularyInput: "",
@@ -232,6 +276,12 @@ export default {
     },
     readerThemeOptions() {
       return READER_THEME_OPTIONS;
+    },
+    highlightColorOptions() {
+      return HIGHLIGHT_COLOR_OPTIONS;
+    },
+    currentHighlightColor() {
+      return normalizeHighlightColor(this.styles && this.styles.highlightColor);
     },
     currentArticleId() {
       const id = this.$route && this.$route.query && this.$route.query.id;
@@ -282,6 +332,11 @@ export default {
     },
   },
   watch: {
+    interactionMode(nextMode) {
+      if (nextMode !== "highlight") {
+        this.highlightColorPanel = false;
+      }
+    },
     styles: {
       handler(newStyles) {
         if (process.client && !this.vocabularyOnly) {
@@ -320,6 +375,7 @@ export default {
     toggleToolDiv() {
       if (this.vocabularyOnly) return;
       this.toolDiv = !this.toolDiv;
+      this.highlightColorPanel = false;
       if (this.toolDiv) {
         this.vocabularyPanel = false;
       }
@@ -335,6 +391,7 @@ export default {
     async openVocabularyPanel() {
       this.vocabularyPanel = true;
       this.toolDiv = false;
+      this.highlightColorPanel = false;
       await this.loadVocabularyWords();
       this.focusVocabularyInput();
     },
@@ -433,6 +490,17 @@ export default {
       ) {
         this.vocabularyPanel = false;
       }
+      if (this.highlightColorPanel) {
+        const highlightColorPanelElement = this.$el.querySelector(
+          ".highlight-color-panel"
+        );
+        if (
+          highlightColorPanelElement &&
+          !highlightColorPanelElement.contains(event.target)
+        ) {
+          this.highlightColorPanel = false;
+        }
+      }
     },
     isEditableTarget(target) {
       if (!target) return false;
@@ -458,6 +526,12 @@ export default {
         return;
 
       const key = event.key && event.key.toLowerCase();
+      if (key === "c" && this.isHighlightMode && !this.vocabularyOnly) {
+        event.preventDefault();
+        this.cycleHighlightColor();
+        return;
+      }
+
       if (key === "a" && !this.vocabularyOnly) {
         event.preventDefault();
         this.cycleReadingMode();
@@ -480,6 +554,42 @@ export default {
           this.styles
         )
       );
+    },
+    getHighlightPreviewStyle(color) {
+      const highlightColor = normalizeHighlightColor(color);
+      const articleBackgroundColor =
+        (this.styles && this.styles.backgroundColor) || "#222";
+
+      return {
+        background: `linear-gradient(${highlightColor}, ${highlightColor}), ${articleBackgroundColor}`,
+      };
+    },
+    toggleHighlightColorPanel() {
+      this.highlightColorPanel = !this.highlightColorPanel;
+      if (this.highlightColorPanel) {
+        this.toolDiv = false;
+        this.vocabularyPanel = false;
+      }
+    },
+    setHighlightColor(color) {
+      this.updateStyles({
+        highlightColor: normalizeHighlightColor(color),
+      });
+      this.highlightColorPanel = false;
+    },
+    cycleHighlightColor() {
+      const colorOptions = this.highlightColorOptions;
+      if (!colorOptions.length) return;
+
+      const currentIndex = colorOptions.findIndex(
+        (option) => option.color === this.currentHighlightColor
+      );
+      const nextIndex =
+        currentIndex === -1 ? 0 : (currentIndex + 1) % colorOptions.length;
+
+      this.updateStyles({
+        highlightColor: normalizeHighlightColor(colorOptions[nextIndex].color),
+      });
     },
     increFontSize() {
       if (this.styles.fontSize < 10) {
@@ -579,6 +689,45 @@ export default {
 .toolbar-button:hover {
   background-color: #4893f5;
 }
+.highlight-color-control {
+  align-items: center;
+  background: transparent;
+  color: inherit;
+  display: flex;
+  justify-content: center;
+  min-height: 1.8rem;
+  position: relative;
+  width: 100%;
+}
+.highlight-color-control:hover {
+  background-color: #4893f5;
+}
+.highlight-color-button {
+  appearance: none;
+  -webkit-appearance: none;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  box-sizing: border-box;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  height: 1.2rem;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 1.2rem;
+}
+.highlight-color-button:hover {
+  background: transparent;
+}
+.highlight-color-dot {
+  border-radius: 50%;
+  display: block;
+  height: 1.2rem;
+  width: 1.2rem;
+}
 .highlight-mode-label {
   font-weight: 400;
 }
@@ -586,6 +735,38 @@ export default {
   display: block;
   height: 1.15rem;
   width: 1.15rem;
+}
+.highlight-color-panel {
+  align-items: center;
+  background: var(--toolbar-bg);
+  border-radius: 6px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+  display: flex;
+  gap: 0.75rem;
+  height: 2.1rem;
+  justify-content: center;
+  min-height: 2.1rem;
+  padding: 0 0.5rem;
+  position: absolute;
+  right: calc(100% + 0.45rem);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1002;
+}
+.highlight-color-swatch {
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+  flex: 0 0 auto;
+  height: 1.28rem;
+  padding: 0;
+  transition: height 120ms ease, width 120ms ease;
+  width: 1.28rem;
+}
+.highlight-color-swatch.active {
+  height: 1.55rem;
+  width: 1.55rem;
 }
 .toolDiv {
   position: fixed;

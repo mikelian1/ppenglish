@@ -1,7 +1,8 @@
 import { normalizeVocabularyRecordForImport } from "./vocabularyModel";
+import { normalizeArticleForStorage } from "./articleSchema";
 
 export const DB_NAME = "ppdb";
-export const DB_VERSION = 5;
+export const DB_VERSION = 6;
 export const ARTICLE_STORE = "articles";
 export const VOCABULARY_STORE = "vocabulary";
 export const VOCABULARY_NORMALIZED_WORD_INDEX = "normalizedWord";
@@ -57,6 +58,22 @@ function migrateVocabularyStore(db, transaction) {
   };
 }
 
+function migrateArticleStore(transaction) {
+  const store = transaction.objectStore(ARTICLE_STORE);
+  const getAllRequest = store.getAll();
+
+  // Keep the migration inside the versionchange transaction; do not use await here.
+  getAllRequest.onsuccess = function (event) {
+    (event.target.result || []).forEach((article) => {
+      try {
+        store.put(normalizeArticleForStorage(article));
+      } catch (error) {
+        // Leave malformed legacy articles untouched so the database can still open.
+      }
+    });
+  };
+}
+
 export function openDatabase() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -65,6 +82,8 @@ export function openDatabase() {
       const db = event.target.result;
       if (!db.objectStoreNames.contains(ARTICLE_STORE)) {
         db.createObjectStore(ARTICLE_STORE, { keyPath: "id" });
+      } else {
+        migrateArticleStore(event.target.transaction);
       }
       if (!db.objectStoreNames.contains(VOCABULARY_STORE)) {
         createVocabularyStore(db);

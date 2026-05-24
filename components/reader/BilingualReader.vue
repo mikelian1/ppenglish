@@ -46,6 +46,7 @@ import {
   LOOKUP_HIGHLIGHT_COLOR,
   buildHighlightChunks,
   createHighlightId,
+  normalizeHighlightColor,
   normalizeHighlights,
   trimSelectionOffsets,
 } from "../../util/highlightUtils";
@@ -87,6 +88,10 @@ export default {
       type: String,
       default: "lookup",
     },
+    highlightColor: {
+      type: String,
+      default: DEFAULT_HIGHLIGHT_COLOR,
+    },
   },
   data() {
     return {
@@ -106,6 +111,9 @@ export default {
   computed: {
     isHighlightMode() {
       return this.mode === "highlight";
+    },
+    currentHighlightColor() {
+      return normalizeHighlightColor(this.highlightColor);
     },
     canUndoHighlight() {
       return this.highlightHistory.length > 0;
@@ -470,17 +478,20 @@ export default {
       const end = this.getTokenEnd(tokenEl);
       return Math.max(start, Math.min(end, offset));
     },
-    addHighlight(segment, start, end, color = DEFAULT_HIGHLIGHT_COLOR) {
+    addHighlight(segment, start, end, color = null) {
       const sourceLength = (segment.source || "").length;
       const previousHighlights = this.normalizedHighlights(
         segment.highlights,
         sourceLength
       );
+      const highlightColor = color
+        ? normalizeHighlightColor(color)
+        : this.currentHighlightColor;
       const nextHighlight = {
         id: createHighlightId(),
         start,
         end,
-        color,
+        color: highlightColor,
       };
       const highlights = this.normalizedHighlights(
         [...previousHighlights, nextHighlight],
