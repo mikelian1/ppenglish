@@ -2,6 +2,7 @@
   <div>
     <div class="toolbar">
       <button
+        v-if="!vocabularyOnly"
         type="button"
         class="toolbar-button mode-button"
         :aria-pressed="String(isHighlightMode)"
@@ -22,7 +23,12 @@
           ></path>
         </svg>
       </button>
-      <button type="button" class="toolbar-button" @click.stop="toggleToolDiv">
+      <button
+        v-if="!vocabularyOnly"
+        type="button"
+        class="toolbar-button"
+        @click.stop="toggleToolDiv"
+      >
         Aa
       </button>
       <button
@@ -34,7 +40,7 @@
       </button>
     </div>
 
-    <div v-if="toolDiv" class="toolDiv" @click.stop>
+    <div v-if="toolDiv && !vocabularyOnly" class="toolDiv" @click.stop>
       <div class="fontFamily">
         <div
           @click.stop="updateFont(1)"
@@ -154,17 +160,22 @@
         {{ vocabularyMessage }}
       </p>
       <div v-if="vocabularyLoading" class="vocabulary-empty">读取中...</div>
-      <div v-else-if="!vocabularyWords.length" class="vocabulary-empty">
+      <div v-else-if="!vocabularyListItems.length" class="vocabulary-empty">
         暂无生词
       </div>
       <div v-else class="vocabulary-list">
-        <div v-for="word in vocabularyWords" :key="word" class="vocabulary-word">
-          <span>{{ word }}</span>
+        <div
+          v-for="item in vocabularyListItems"
+          :key="item.key"
+          :class="item.type === 'group' ? 'vocabulary-group' : 'vocabulary-word'"
+        >
+          <span>{{ item.type === "group" ? item.title : item.record.word }}</span>
           <button
+            v-if="item.type === 'word'"
             type="button"
             class="vocabulary-action-button"
-            :disabled="vocabularyDeletingWord === word"
-            @click.stop="removeWord(word)"
+            :disabled="vocabularyDeletingId === item.record.id"
+            @click.stop="removeWord(item.record)"
           >
             删除
           </button>
@@ -183,7 +194,8 @@ import {
 import {
   addVocabularyWord,
   deleteVocabularyWord,
-  listVocabularyWords,
+  listArticles,
+  listVocabularyRecords,
 } from "~/util/articleStorage";
 
 export default {
@@ -195,16 +207,21 @@ export default {
       type: String,
       default: "lookup",
     },
+    vocabularyOnly: {
+      type: Boolean,
+      default: false,
+    },
   },
   data() {
     return {
       toolDiv: false,
       vocabularyPanel: false,
-      vocabularyWords: [],
+      vocabularyRecords: [],
+      articleTitlesById: {},
       vocabularyInput: "",
       vocabularyLoading: false,
       vocabularySaving: false,
-      vocabularyDeletingWord: "",
+      vocabularyDeletingId: "",
       vocabularyError: "",
       vocabularyMessage: "",
     };
@@ -216,11 +233,58 @@ export default {
     readerThemeOptions() {
       return READER_THEME_OPTIONS;
     },
+    currentArticleId() {
+      const id = this.$route && this.$route.query && this.$route.query.id;
+      return this.$route && this.$route.path === "/reader" && id
+        ? String(id)
+        : "";
+    },
+    vocabularyOptions() {
+      return this.currentArticleId ? { articleId: this.currentArticleId } : {};
+    },
+    vocabularyListItems() {
+      if (this.currentArticleId) {
+        return this.vocabularyRecords.map((record) =>
+          this.createVocabularyWordItem(record)
+        );
+      }
+
+      const groupsById = new Map();
+      this.vocabularyRecords.forEach((record) => {
+        const hasArticleTitle =
+          record.articleId && this.articleTitlesById[record.articleId];
+        const groupId = hasArticleTitle ? record.articleId : "";
+        const groupTitle = hasArticleTitle
+          ? this.articleTitlesById[record.articleId]
+          : "未关联文章";
+        const group = groupsById.get(groupId) || {
+          id: groupId,
+          title: groupTitle,
+          latestTime: -Infinity,
+          records: [],
+        };
+        const time = this.getVocabularyRecordTime(record);
+        group.latestTime = Math.max(group.latestTime, time);
+        group.records.push(record);
+        groupsById.set(groupId, group);
+      });
+
+      return Array.from(groupsById.values())
+        .sort((a, b) => b.latestTime - a.latestTime)
+        .flatMap((group) => [
+          {
+            type: "group",
+            key: `group:${group.id || "unassigned"}`,
+            title: group.title,
+          },
+          ...group.records.map((record) => this.createVocabularyWordItem(record)),
+        ]);
+    },
   },
   watch: {
     styles: {
       handler(newStyles) {
-        if (process.client) {
+        if (process.client && !this.vocabularyOnly) {
           const normalizedStyles = normalizeReadingStyles(
             newStyles,
             this.styles
@@ -232,17 +296,19 @@ export default {
     },
   },
   mounted() {
-    let savedStyles = null;
-    try {
-      savedStyles = JSON.parse(localStorage.getItem("styles"));
-    } catch (error) {
-      savedStyles = null;
-    }
+    if (!this.vocabularyOnly) {
+      let savedStyles = null;
+      try {
+        savedStyles = JSON.parse(localStorage.getItem("styles"));
+      } catch (error) {
+        savedStyles = null;
+      }
 
-    const nextStyles = normalizeReadingStyles(savedStyles, this.styles);
-    document.body.style.backgroundColor =
-      nextStyles.backgroundColor || this.styles.backgroundColor || "#222";
-    this.$emit("update:styles", nextStyles);
+      const nextStyles = normalizeReadingStyles(savedStyles, this.styles);
+      document.body.style.backgroundColor =
+        nextStyles.backgroundColor || this.styles.backgroundColor || "#222";
+      this.$emit("update:styles", nextStyles);
+    }
     document.addEventListener("click", this.handleOutsideClick);
     window.addEventListener("keydown", this.handleKeydown);
   },
@@ -252,6 +318,7 @@ export default {
   },
   methods: {
     toggleToolDiv() {
+      if (this.vocabularyOnly) return;
       this.toolDiv = !this.toolDiv;
       if (this.toolDiv) {
         this.vocabularyPanel = false;
@@ -283,7 +350,18 @@ export default {
       this.vocabularyLoading = true;
       this.vocabularyError = "";
       try {
-        this.vocabularyWords = await listVocabularyWords();
+        this.vocabularyRecords = await listVocabularyRecords(
+          this.vocabularyOptions
+        );
+        if (!this.currentArticleId) {
+          const articles = await listArticles();
+          this.articleTitlesById = articles.reduce((titlesById, article) => {
+            if (article && article.id && article.title) {
+              titlesById[article.id] = article.title;
+            }
+            return titlesById;
+          }, {});
+        }
       } catch (error) {
         this.vocabularyError = error.message || "读取生词失败。";
       } finally {
@@ -295,7 +373,10 @@ export default {
       this.vocabularyMessage = "";
       this.vocabularySaving = true;
       try {
-        const result = await addVocabularyWord(this.vocabularyInput);
+        const result = await addVocabularyWord(
+          this.vocabularyInput,
+          this.vocabularyOptions
+        );
         this.vocabularyInput = "";
         this.vocabularyMessage = result.added ? "已加入。" : "已存在。";
         await this.loadVocabularyWords();
@@ -305,19 +386,35 @@ export default {
         this.vocabularySaving = false;
       }
     },
-    async removeWord(word) {
+    async removeWord(record) {
       this.vocabularyError = "";
       this.vocabularyMessage = "";
-      this.vocabularyDeletingWord = word;
+      this.vocabularyDeletingId = record.id;
       try {
-        await deleteVocabularyWord(word);
+        await deleteVocabularyWord(record.word, {
+          articleId: record.articleId || "",
+        });
         this.vocabularyMessage = "已删除。";
         await this.loadVocabularyWords();
       } catch (error) {
         this.vocabularyError = error.message || "删除失败。";
       } finally {
-        this.vocabularyDeletingWord = "";
+        this.vocabularyDeletingId = "";
       }
+    },
+    createVocabularyWordItem(record) {
+      return {
+        type: "word",
+        key: `word:${record.id}`,
+        record,
+      };
+    },
+    getVocabularyRecordTime(record) {
+      const timestamp = Date.parse(
+        (record && (record.addedAt || record.createdAt || record.updatedAt)) ||
+          ""
+      );
+      return Number.isFinite(timestamp) ? timestamp : -Infinity;
     },
     handleOutsideClick(event) {
       const toolDivElement = this.$el.querySelector(".toolDiv");
@@ -361,7 +458,7 @@ export default {
         return;
 
       const key = event.key && event.key.toLowerCase();
-      if (key === "a") {
+      if (key === "a" && !this.vocabularyOnly) {
         event.preventDefault();
         this.cycleReadingMode();
         return;
@@ -662,6 +759,15 @@ export default {
   grid-template-columns: minmax(0, 1fr) var(--vocabulary-action-width);
   line-height: 1.6;
   padding: 0.12rem 0;
+}
+.vocabulary-group {
+  border-bottom: 1px solid #d0d5dd;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-top: 0.2rem;
+  padding: 0.3rem 0 0.18rem;
 }
 .vocabulary-word span {
   overflow-wrap: anywhere;

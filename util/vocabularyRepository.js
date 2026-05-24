@@ -1,4 +1,5 @@
 import {
+  VOCABULARY_ARTICLE_ID_INDEX,
   VOCABULARY_ARTICLE_WORD_INDEX,
   VOCABULARY_STORE,
   openDatabase,
@@ -13,11 +14,21 @@ import {
   normalizeVocabularyWord,
 } from "./vocabularyModel";
 
-export async function listVocabularyRecords() {
+function normalizeVocabularyOptions(options) {
+  return options && typeof options === "object" ? options : {};
+}
+
+export async function listVocabularyRecords(options = {}) {
+  const recordOptions = normalizeVocabularyOptions(options);
   const db = await openDatabase();
   const transaction = db.transaction([VOCABULARY_STORE], "readonly");
   const store = transaction.objectStore(VOCABULARY_STORE);
-  const words = await requestToPromise(store.getAll());
+  const words =
+    typeof recordOptions.articleId === "string"
+      ? await requestToPromise(
+          store.index(VOCABULARY_ARTICLE_ID_INDEX).getAll(recordOptions.articleId)
+        )
+      : await requestToPromise(store.getAll());
   db.close();
   return words
     .filter((item) => item && item.word)
@@ -26,8 +37,8 @@ export async function listVocabularyRecords() {
     .filter(Boolean);
 }
 
-export async function listVocabularyWords() {
-  const words = await listVocabularyRecords();
+export async function listVocabularyWords(options = {}) {
+  const words = await listVocabularyRecords(options);
   const seenWords = new Set();
   return words
     .map((item) => item.word)
@@ -69,7 +80,8 @@ export async function addVocabularyWord(rawWord, options = {}) {
   };
 }
 
-export async function deleteVocabularyWord(rawWord) {
+export async function deleteVocabularyWord(rawWord, options = {}) {
+  const recordOptions = normalizeVocabularyOptions(options);
   const word = normalizeVocabularyWord(rawWord);
   if (!word) {
     throw new Error("生词不存在。");
@@ -79,7 +91,9 @@ export async function deleteVocabularyWord(rawWord) {
   const transaction = db.transaction([VOCABULARY_STORE], "readwrite");
   const store = transaction.objectStore(VOCABULARY_STORE);
   const scopeWordIndex = store.index(VOCABULARY_ARTICLE_WORD_INDEX);
-  const existingRecord = await requestToPromise(scopeWordIndex.get(["", word]));
+  const existingRecord = await requestToPromise(
+    scopeWordIndex.get([recordOptions.articleId || "", word])
+  );
   if (existingRecord) {
     await requestToPromise(store.delete(existingRecord.id));
   }

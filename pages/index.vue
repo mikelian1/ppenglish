@@ -4,6 +4,7 @@
       v-if="showReadingToolbar"
       :styles.sync="styles"
       :interaction-mode="readerInteractionMode"
+      :vocabulary-only="isHomePage"
       :style="{ backgroundColor: styles.color, color: styles.backgroundColor }"
       class="toolbar-container"
       @toggle-interaction-mode="toggleInteractionMode"
@@ -50,8 +51,11 @@ export default {
     };
   },
   computed: {
+    isHomePage() {
+      return this.$route.path === "/";
+    },
     showReadingToolbar() {
-      return this.$route.path !== "/" && this.$route.path !== "/about";
+      return this.$route.path !== "/about";
     },
     activeThemeIndex() {
       if (this.styles.theme) return getReaderTheme(this.styles.theme).id;

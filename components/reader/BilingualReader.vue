@@ -95,6 +95,7 @@ export default {
       topMessage: "",
       topMessageTimer: null,
       pendingVocabularyWord: "",
+      pendingVocabularySource: null,
       vocabularySaving: false,
       suppressHighlightClick: false,
       highlightHistory: [],
@@ -181,7 +182,7 @@ export default {
         return;
       }
 
-      if (key === "h") {
+      if (key === "q") {
         event.preventDefault();
         this.toggleMode();
       }
@@ -271,6 +272,10 @@ export default {
 
       this.addHighlight(segment, start, end);
       this.pendingVocabularyWord = this.normalizeHighlightedText(selectedText);
+      this.pendingVocabularySource = {
+        segmentId: segment.id,
+        context: selectedText,
+      };
       this.suppressHighlightClick = true;
       window.setTimeout(() => {
         this.suppressHighlightClick = false;
@@ -500,8 +505,17 @@ export default {
 
       this.vocabularySaving = true;
       try {
-        const result = await addVocabularyWord(word);
+        const result = await addVocabularyWord(word, {
+          articleId: this.article.id,
+          segmentId:
+            this.pendingVocabularySource &&
+            this.pendingVocabularySource.segmentId,
+          context:
+            this.pendingVocabularySource &&
+            this.pendingVocabularySource.context,
+        });
         this.pendingVocabularyWord = "";
+        this.pendingVocabularySource = null;
         this.showTopMessage(
           result.added
             ? `已添加 ${result.word} 至生词本`
