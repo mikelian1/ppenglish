@@ -85,7 +85,21 @@ export default {
       };
     },
   },
+  mounted() {
+    this.syncBodyBackgroundColor();
+  },
+  watch: {
+    "$route.path": "syncBodyBackgroundColor",
+    "styles.backgroundColor": "syncBodyBackgroundColor",
+  },
   methods: {
+    syncBodyBackgroundColor() {
+      if (!process.client) return;
+
+      document.body.style.backgroundColor = this.isHomePage
+        ? "#fefefe"
+        : this.styles.backgroundColor;
+    },
     toggleInteractionMode() {
       this.readerInteractionMode =
         this.readerInteractionMode === "highlight" ? "lookup" : "highlight";

@@ -1,9 +1,4 @@
 export {
-  ARTICLE_SCHEMA_VERSION,
-  validateArticle,
-} from "./articleSchema";
-
-export {
   createArticle,
   saveArticle,
   getArticle,
@@ -15,8 +10,6 @@ export {
   addVocabularyWord,
   deleteVocabularyWord,
   listVocabularyRecords,
-  listVocabularyWords,
-  importVocabularyWords,
 } from "./vocabularyRepository";
 
 export {
